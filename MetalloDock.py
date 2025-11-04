@@ -1290,26 +1290,7 @@ zinc_pseudo_py = (files_gui_dir / "zinc_pseudo.py").resolve() if (files_gui_dir 
 base_params = (files_gui_dir / "AD4_parameters.dat").resolve() if (files_gui_dir / "AD4_parameters.dat").exists() else None
 extra_params = (files_gui_dir / "AD4Zn.dat").resolve() if (files_gui_dir / "AD4Zn.dat").exists() else None
 
-# Platform and executable status
-if not is_windows:
-    if autogrid_exe and autogrid_exe.suffix == ".exe":
-        st.error("⚠️ **Running on Linux/Unix but Windows `.exe` files detected!**")
-        st.warning(
-            "**Windows executables cannot run on Linux.**\n\n"
-            "**To fix:**\n"
-            "1. Download Linux versions of AutoDock Vina and AutoGrid4\n"
-            "2. Place them in `Files_for_GUI/` without `.exe` extension:\n"
-            "   - `Files_for_GUI/vina` (not `vina.exe`)\n"
-            "   - `Files_for_GUI/autogrid4` (not `autogrid4.exe`)\n"
-            "3. Make them executable: `chmod +x Files_for_GUI/vina Files_for_GUI/autogrid4`\n\n"
-            "**Current OS:** " + platform.system() + " | **Expected:** Linux executables"
-        )
-    elif not autogrid_exe:
-        st.warning(
-            "⚠️ **AutoGrid4 executable not found.**\n"
-            f"Looking for: `Files_for_GUI/autogrid4` (Linux) or `Files_for_GUI/autogrid4.exe` (Windows)\n"
-            f"**Current OS:** {platform.system()}"
-        )
+# Platform and executable status (silent detection - no warnings)
 
 # Test executables button
 st.subheader("Tools")
