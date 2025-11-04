@@ -9,6 +9,7 @@ import shutil
 import zipfile
 import random
 import subprocess
+import platform
 from pathlib import Path
 from typing import List, Tuple, Optional, Set
 
@@ -224,10 +225,36 @@ def write_simple_gpf(
     gpf_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s: int = 1800) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [str(autogrid_exe), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
-        cwd=str(work_dir), capture_output=True, text=True, timeout=timeout_s
-    )
+    """Run AutoGrid4 with proper error handling and permission checks."""
+    if not autogrid_exe or not autogrid_exe.exists():
+        raise FileNotFoundError(f"AutoGrid4 executable not found at: {autogrid_exe}")
+    
+    # Check if executable (on Unix-like systems)
+    if not platform.system() == "Windows":
+        if not os.access(autogrid_exe, os.X_OK):
+            raise PermissionError(
+                f"AutoGrid4 executable is not executable: {autogrid_exe}\n"
+                f"Fix by running: chmod +x {autogrid_exe}"
+            )
+    
+    # Check if it's a Windows .exe on a non-Windows system
+    if not platform.system() == "Windows" and autogrid_exe.suffix == ".exe":
+        raise PermissionError(
+            f"Cannot run Windows executable (.exe) on Linux/Unix system.\n"
+            f"Please provide a Linux version of AutoGrid4 (without .exe extension) in Files_for_GUI/"
+        )
+    
+    try:
+        return subprocess.run(
+            [str(autogrid_exe), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
+            cwd=str(work_dir), capture_output=True, text=True, timeout=timeout_s
+        )
+    except PermissionError as e:
+        raise PermissionError(
+            f"Permission denied when trying to run AutoGrid4: {autogrid_exe}\n"
+            f"On Linux/Mac, make sure the file has execute permissions: chmod +x {autogrid_exe}\n"
+            f"Original error: {e}"
+        )
 
 def list_maps_present(maps_prefix: Path) -> Set[str]:
     """Return set of atom types that already have an affinity map file for this prefix."""
@@ -1025,8 +1052,17 @@ def _run_cli():
     work_dir.mkdir(parents=True, exist_ok=True)
 
     files_gui = (Path(__file__).resolve().parent / "Files_for_GUI")
-    vina_exe = (files_gui / "vina.exe").resolve()
-    autogrid_exe = (files_gui / "autogrid4.exe").resolve()
+    
+    # Detect OS and use appropriate executable names
+    is_windows_cli = platform.system() == "Windows"
+    if is_windows_cli:
+        vina_exe = (files_gui / "vina.exe").resolve()
+        autogrid_exe = (files_gui / "autogrid4.exe").resolve()
+    else:
+        # Linux: try without .exe first
+        vina_exe = (files_gui / "vina").resolve() if (files_gui / "vina").exists() else (files_gui / "vina.exe").resolve()
+        autogrid_exe = (files_gui / "autogrid4").resolve() if (files_gui / "autogrid4").exists() else (files_gui / "autogrid4.exe").resolve()
+    
     base_params = (files_gui / "AD4_parameters.dat").resolve()
     extra_params = (files_gui / "AD4Zn.dat").resolve() if (files_gui / "AD4Zn.dat").exists() else None
 
@@ -1220,16 +1256,60 @@ with b2:
 files_gui_dir = work_dir / "Files_for_GUI"
 import sys
 
+# Detect operating system
+is_windows = platform.system() == "Windows"
+exe_ext = ".exe" if is_windows else ""
+
 # Always enable receptor oxygen normalization (O→OA)
 normalize_OA = True
 
 # Auto-detect paths (fallback to defaults if Files_for_GUI doesn't exist)
-vina_exe = (files_gui_dir / "vina.exe").resolve() if (files_gui_dir / "vina.exe").exists() else None
-autogrid_exe = (files_gui_dir / "autogrid4.exe").resolve() if (files_gui_dir / "autogrid4.exe").exists() else None
+# Try Windows .exe first, then Linux executable (no extension)
+vina_exe = None
+if is_windows:
+    vina_exe = (files_gui_dir / "vina.exe").resolve() if (files_gui_dir / "vina.exe").exists() else None
+else:
+    # Linux: try without .exe extension
+    vina_exe = (files_gui_dir / "vina").resolve() if (files_gui_dir / "vina").exists() else None
+    if not vina_exe:
+        # Fallback: try vina.exe in case it's there
+        vina_exe = (files_gui_dir / "vina.exe").resolve() if (files_gui_dir / "vina.exe").exists() else None
+
+autogrid_exe = None
+if is_windows:
+    autogrid_exe = (files_gui_dir / "autogrid4.exe").resolve() if (files_gui_dir / "autogrid4.exe").exists() else None
+else:
+    # Linux: try without .exe extension
+    autogrid_exe = (files_gui_dir / "autogrid4").resolve() if (files_gui_dir / "autogrid4").exists() else None
+    if not autogrid_exe:
+        # Fallback: try autogrid4.exe in case it's there
+        autogrid_exe = (files_gui_dir / "autogrid4.exe").resolve() if (files_gui_dir / "autogrid4.exe").exists() else None
+
 python_exe = Path(sys.executable)
 zinc_pseudo_py = (files_gui_dir / "zinc_pseudo.py").resolve() if (files_gui_dir / "zinc_pseudo.py").exists() else None
 base_params = (files_gui_dir / "AD4_parameters.dat").resolve() if (files_gui_dir / "AD4_parameters.dat").exists() else None
 extra_params = (files_gui_dir / "AD4Zn.dat").resolve() if (files_gui_dir / "AD4Zn.dat").exists() else None
+
+# Platform and executable status
+if not is_windows:
+    if autogrid_exe and autogrid_exe.suffix == ".exe":
+        st.error("⚠️ **Running on Linux/Unix but Windows `.exe` files detected!**")
+        st.warning(
+            "**Windows executables cannot run on Linux.**\n\n"
+            "**To fix:**\n"
+            "1. Download Linux versions of AutoDock Vina and AutoGrid4\n"
+            "2. Place them in `Files_for_GUI/` without `.exe` extension:\n"
+            "   - `Files_for_GUI/vina` (not `vina.exe`)\n"
+            "   - `Files_for_GUI/autogrid4` (not `autogrid4.exe`)\n"
+            "3. Make them executable: `chmod +x Files_for_GUI/vina Files_for_GUI/autogrid4`\n\n"
+            "**Current OS:** " + platform.system() + " | **Expected:** Linux executables"
+        )
+    elif not autogrid_exe:
+        st.warning(
+            "⚠️ **AutoGrid4 executable not found.**\n"
+            f"Looking for: `Files_for_GUI/autogrid4` (Linux) or `Files_for_GUI/autogrid4.exe` (Windows)\n"
+            f"**Current OS:** {platform.system()}"
+        )
 
 # Test executables button
 st.subheader("Tools")
@@ -1411,13 +1491,38 @@ if build_maps_btn:
                 except Exception: pass
 
         with st.spinner("Running AutoGrid4 to generate/patch AD4 maps…"):
-            ag = run_autogrid4(autogrid_exe, maps_dir, gpf_out)
-        if ag.returncode == 0:
-            st.success(f"Maps are ready at: {maps_dir}")
-            st.code((ag.stdout or ag.stderr)[:1200])
-        else:
-            st.error("AutoGrid4 failed.")
-            st.code((ag.stdout or '') + "\n" + (ag.stderr or ''))
+            try:
+                ag = run_autogrid4(autogrid_exe, maps_dir, gpf_out)
+                if ag.returncode == 0:
+                    st.success(f"Maps are ready at: {maps_dir}")
+                    st.code((ag.stdout or ag.stderr)[:1200])
+                else:
+                    st.error("AutoGrid4 failed.")
+                    st.code((ag.stdout or '') + "\n" + (ag.stderr or ''))
+            except PermissionError as e:
+                st.error(f"❌ **Permission Error:** {str(e)}")
+                if not platform.system() == "Windows":
+                    st.warning(
+                        "**Running on Linux/Unix:**\n"
+                        "- Windows `.exe` files cannot run on Linux.\n"
+                        "- You need Linux versions of the executables (without `.exe` extension).\n"
+                        "- Download Linux versions of AutoDock Vina and AutoGrid4 and place them in `Files_for_GUI/`.\n"
+                        "- Make sure they have execute permissions: `chmod +x Files_for_GUI/autogrid4`"
+                    )
+                st.stop()
+            except FileNotFoundError as e:
+                st.error(f"❌ **File Not Found:** {str(e)}")
+                st.warning(
+                    f"**Solution:**\n"
+                    f"- Ensure `Files_for_GUI/` contains the required executables.\n"
+                    f"- On Linux: use executables without `.exe` extension (e.g., `autogrid4` not `autogrid4.exe`).\n"
+                    f"- On Windows: use `.exe` files (e.g., `autogrid4.exe`)."
+                )
+                st.stop()
+            except Exception as e:
+                st.error(f"❌ **Unexpected Error:** {str(e)}")
+                st.code(str(e))
+                st.stop()
 
         # 4) Confirm maps present; call out any still-missing types
         have = list_maps_present(maps_prefix)
@@ -1589,4 +1694,3 @@ st.caption(
     "• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.\n"
     "• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."
 )
-
