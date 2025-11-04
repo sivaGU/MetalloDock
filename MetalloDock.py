@@ -229,20 +229,24 @@ def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s:
     if not autogrid_exe or not autogrid_exe.exists():
         raise FileNotFoundError(f"AutoGrid4 executable not found at: {autogrid_exe}")
     
-    # Check if executable (on Unix-like systems)
-    if not platform.system() == "Windows":
+    # Check if it's a Windows .exe on a non-Windows system FIRST (most important check)
+    is_windows_os = platform.system() == "Windows"
+    if not is_windows_os and autogrid_exe.suffix == ".exe":
+        raise PermissionError(
+            "Cannot run Windows executable (.exe) on Linux/Unix system.\n\n"
+            "Solution:\n"
+            "1. Download Linux version of AutoGrid4\n"
+            "2. Place it in Files_for_GUI/ as 'autogrid4' (without .exe extension)\n"
+            "3. Make it executable: chmod +x Files_for_GUI/autogrid4"
+        )
+    
+    # Check if executable (on Unix-like systems) - only for Linux executables
+    if not is_windows_os:
         if not os.access(autogrid_exe, os.X_OK):
             raise PermissionError(
                 f"AutoGrid4 executable is not executable: {autogrid_exe}\n"
                 f"Fix by running: chmod +x {autogrid_exe}"
             )
-    
-    # Check if it's a Windows .exe on a non-Windows system
-    if not platform.system() == "Windows" and autogrid_exe.suffix == ".exe":
-        raise PermissionError(
-            f"Cannot run Windows executable (.exe) on Linux/Unix system.\n"
-            f"Please provide a Linux version of AutoGrid4 (without .exe extension) in Files_for_GUI/"
-        )
     
     try:
         return subprocess.run(
@@ -1481,15 +1485,8 @@ if build_maps_btn:
                     st.error("AutoGrid4 failed.")
                     st.code((ag.stdout or '') + "\n" + (ag.stderr or ''))
             except PermissionError as e:
-                st.error(f"❌ **Permission Error:** {str(e)}")
-                if not platform.system() == "Windows":
-                    st.warning(
-                        "**Running on Linux/Unix:**\n"
-                        "- Windows `.exe` files cannot run on Linux.\n"
-                        "- You need Linux versions of the executables (without `.exe` extension).\n"
-                        "- Download Linux versions of AutoDock Vina and AutoGrid4 and place them in `Files_for_GUI/`.\n"
-                        "- Make sure they have execute permissions: `chmod +x Files_for_GUI/autogrid4`"
-                    )
+                st.error(f"❌ **Permission Error:**")
+                st.code(str(e))
                 st.stop()
             except FileNotFoundError as e:
                 st.error(f"❌ **File Not Found:** {str(e)}")
