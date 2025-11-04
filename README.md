@@ -2,16 +2,6 @@
 
 A user-friendly Streamlit-based GUI for molecular docking of ligands to metalloprotein receptors using AutoDock Vina and AutoDock4 (AD4).
 
-## 🚀 Quick Start
-
-### 🎯 One-Click Setup Options
-
-**👉 [Open in GitHub Codespaces](https://github.com/codespaces/new)** (Cloud-based development environment)
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new)
-
-**👉 [Open in VS Code](https://code.visualstudio.com/)** (Desktop IDE)
-
 1. Install [VS Code](https://code.visualstudio.com/)
 2. Install the [GitHub Pull Requests and Issues extension](https://marketplace.visualstudio.com/items?itemName=GitHub.vscode-pull-request-github)
 3. Click the green "Code" button on GitHub and select "Open with Visual Studio Code"
@@ -206,4 +196,5 @@ All executables and parameter files are automatically detected from the `Files_f
 ---
 
 **MetalloDock GUI** - Simplified molecular docking for metalloproteins 🧪✨
+
 
