@@ -1472,6 +1472,95 @@ if _files_gui_setup.exists():
 st.set_page_config(page_title="MetalloDock", layout="wide")
 st.title("MetalloDock")
 
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", ["Home", "Docking"], index=1)
+
+if page == "Home":
+    st.header("Welcome to MetalloDock")
+    st.markdown(
+        """
+        MetalloDock is a streamlined pipeline for metalloprotein docking that combines AutoDock 4
+        grid-map workflows with SMINA component analysis.  Use this page as a handy reference while
+        you prepare receptors and ligands or while you explain the workflow to collaborators.
+
+        ---
+        """
+    )
+    st.subheader("Why MetalloDock?")
+    st.markdown(
+        """
+        - **Metalloprotein aware** – patches AutoDock 4 maps with zinc pseudo atoms and filters
+          problematic ion types before running AutoGrid4.  
+        - **Dual-scoring** – re-scores AD4 poses with SMINA to expose gauss, repulsion, hydrophobic,
+          hydrogen-bond, and torsional terms for every ligand.  
+        - **Hands-off configuration** – executables, parameters, and working directories are detected
+          automatically from the bundled `Files_for_GUI` folder.  
+        - **CLI + GUI parity** – the same engine powers the Streamlit interface and the CLI presets,
+          so you can automate batches or run interactively without diverging code paths.
+        """
+    )
+
+    st.subheader("Workflow Overview")
+    st.markdown(
+        """
+        1. **Choose a working directory** – MetalloDock will mirror the expected folder layout there
+           (`prepared_ligands/`, `ad4_maps/`, and the results folders).  
+        2. **Load a receptor** – upload a `.pdbqt` file or point to an existing path; zinc pseudo atom
+           insertion and OA normalisation are applied automatically.  
+        3. **Prepare ligands** – copy a source folder into
+           `prepared_ligands/ligands_no_hydrogens/` or upload ready-to-dock `.pdbqt` files.  
+        4. **Build/Update AD4 maps** – MetalloDock inspects every ligand, force-includes missing atom
+           types, and runs AutoGrid4.  Map building is optional once the maps folder is complete.  
+        5. **Run docking**  
+           - *Vina (box)* – performs a classical Vina search inside the specified grid.  
+           - *AD4 + SMINA (hybrid)* – docks with AD4 maps, extracts the top poses, and re-scores every
+             pose with SMINA to produce the full component table.
+        6. **Review results** – view scores inline, download the combined CSV, or grab all pose files
+           in a single ZIP archive for further analysis.
+        """
+    )
+
+    st.subheader("Output Files at a Glance")
+    st.markdown(
+        """
+        | Folder | Contents |
+        | --- | --- |
+        | `prepared_ligands/ligands_no_hydrogens/` | Ready-to-dock ligand `.pdbqt` files |
+        | `ad4_maps/<prefix>/` | `*.map`, `.fld`, `.gpf`, and the patched receptor used by AutoGrid4 |
+        | `<work_dir>/Vina_Docking_Results/` | Per-ligand Vina pose files and logs |
+        | `<work_dir>/Hybrid_Docking_Results/` | AD4 pose files, SMINA atom-term exports, and hybrid logs |
+        | `<work_dir>/<run>/pfas_docking_results.csv` | Aggregated table shown in the GUI |
+
+        The hybrid CSV includes every SMINA term (raw, coefficient, weighted), the AD4 energies,
+        torsion counts, and convenience columns such as total weighted score and pose index.
+        """
+    )
+
+    st.subheader("Tips")
+    st.markdown(
+        """
+        - Use the **Test executables** button before long runs, especially after syncing to a new
+          machine or deploying to Streamlit Cloud.  
+        - If SMINA columns ever show `N/A`, open the corresponding `_hybrid.log` to see the exact
+          cause (usually a missing receptor path or a ligand pose that failed to parse).  
+        - Keep a dedicated working directory per project; this keeps AutoGrid maps, intermediate
+          ligands, and log files grouped together for reproducibility.
+        """
+    )
+
+    st.subheader("Need to Automate?")
+    st.markdown(
+        """
+        The CLI (`python MetalloDock.py --cli --preset CA --work-dir <path> ...`) uses the same code
+        paths as the GUI.  Build maps once, then script batch runs across presets without touching the
+        Streamlit interface.
+        """
+    )
+
+    st.markdown("---")
+    st.caption("MetalloDock • hybrid AutoDock4 + SMINA docking assistant")
+    st.stop()
+
 # Working directory chooser
 work_dir_input = st.text_input(
     "Working directory",
