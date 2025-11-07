@@ -220,6 +220,7 @@ def _build_gpf_file(
     workdir: Path,
     map_prefix: str,
     receptor_tz: Path,
+    parameter_override: Optional[str] = None,
 ) -> Path:
     atom_types = _parse_pdbqt_atom_types(inputs.ligand)
     atom_types = [atype for atype in atom_types if atype] or ["C"]
@@ -243,7 +244,7 @@ def _build_gpf_file(
             f"elecmap {map_prefix}.e.map",
             f"dsolvmap {map_prefix}.d.map",
             "dielectric -0.1465",
-            f"parameter_file {inputs.parameter_file}",
+            f"parameter_file {parameter_override or inputs.parameter_file}",
         ]
     )
 
@@ -279,8 +280,10 @@ def run_docking(inputs: DockingInputs, demo_mode: bool = False) -> DockingOutput
 
     receptor_local = workdir / inputs.receptor.name
     ligand_local = workdir / inputs.ligand.name
+    parameter_local = workdir / inputs.parameter_file.name
     shutil.copy2(inputs.receptor, receptor_local)
     shutil.copy2(inputs.ligand, ligand_local)
+    shutil.copy2(inputs.parameter_file, parameter_local)
 
     receptor_tz = workdir / f"{inputs.receptor.stem}_tz.pdbqt"
     zinc_proc = _run_zinc_pseudo(receptor_local, receptor_tz)
@@ -291,7 +294,13 @@ def run_docking(inputs: DockingInputs, demo_mode: bool = False) -> DockingOutput
         )
 
     map_prefix = inputs.map_prefix or f"{inputs.receptor.stem}_maps"
-    gpf_path = _build_gpf_file(inputs, workdir, map_prefix, receptor_tz)
+    gpf_path = _build_gpf_file(
+        inputs,
+        workdir,
+        map_prefix,
+        receptor_tz,
+        parameter_override=parameter_local.name,
+    )
 
     grid_log = workdir / f"{map_prefix}.glg"
     autogrid_cmd = [
@@ -339,6 +348,7 @@ def run_docking(inputs: DockingInputs, demo_mode: bool = False) -> DockingOutput
     metadata = {
         "command_autogrid": " ".join(autogrid_cmd),
         "command_vina": " ".join(vina_cmd),
+        "parameter_file": parameter_local.name,
         "zinc_stdout": zinc_proc.stdout,
         "zinc_stderr": zinc_proc.stderr,
         "autogrid_stdout": grid_proc.stdout,

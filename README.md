@@ -6,8 +6,6 @@ MetalloDock is a Streamlit interface that automates the AutoDock4Zn workflow on 
 - Generate AD4 grid parameter files and affinity maps (`autogrid4`).
 - Run AutoDock Vina with the AD4 scoring function (`vina --scoring ad4`).
 
-GUI Link: https://metallodock-mb6ag2p9sjzbqytqbbn4t8.streamlit.app/
-
 ## Repository Contents
 
 - `metallodock_app.py` – main Streamlit application with Home, Demo, MetalloDock, and Documentation pages.
@@ -49,5 +47,4 @@ GUI Link: https://metallodock-mb6ag2p9sjzbqytqbbn4t8.streamlit.app/
 - The packaged binaries are the Windows versions in the source project. Replace them with Linux builds of AutoGrid4, AutoDock4, and AutoDock Vina when deploying on Linux.
 - Ensure Python can execute `Files_for_GUI/zinc_pseudo.py` (ships from the AutoDock-Vina examples).
 - For batch docking, keep ligands in a dedicated folder and invoke the workflow repeatedly with different inputs and map prefixes.
-
 
