@@ -1276,7 +1276,13 @@ if page_mode == "demo":
     )
     demo_selected_receptor = receptor_choice
     receptor_info = demo_receptors[receptor_choice]
-    receptor_path = receptor_info["path"].resolve()
+    demo_receptor_src = receptor_info["path"].resolve()
+    demo_assets_dir = work_dir / "demo_assets"
+    demo_assets_dir.mkdir(parents=True, exist_ok=True)
+    demo_receptor_dst = demo_assets_dir / demo_receptor_src.name
+    if not demo_receptor_dst.exists():
+        shutil.copy2(demo_receptor_src, demo_receptor_dst)
+    receptor_path = demo_receptor_dst
 
     ligand_files = sorted(PFAS_LIGANDS_DIR.glob("*.pdbqt"))
     ligand_labels = [p.name for p in ligand_files]
@@ -1287,6 +1293,8 @@ if page_mode == "demo":
         st.markdown("**Select ligand(s)**")
         previous_selection = st.session_state.get("demo_ligand_selection", list(ligand_labels))
         selected_labels = []
+        demo_ligand_dir = demo_assets_dir / "ligands"
+        demo_ligand_dir.mkdir(parents=True, exist_ok=True)
         for lig_name in ligand_labels:
             checked = st.checkbox(
                 lig_name,
@@ -1297,7 +1305,14 @@ if page_mode == "demo":
                 selected_labels.append(lig_name)
         st.session_state["demo_ligand_selection"] = selected_labels
         ligand_lookup = {p.name: p for p in ligand_files}
-        ligand_paths = [ligand_lookup[name] for name in selected_labels if name in ligand_lookup]
+        ligand_paths = []
+        for name in selected_labels:
+            if name in ligand_lookup:
+                src = ligand_lookup[name]
+                dst = demo_ligand_dir / src.name
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                ligand_paths.append(dst)
         if not ligand_paths:
             st.warning("Select at least one ligand to enable docking.")
 
