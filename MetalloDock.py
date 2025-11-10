@@ -1329,10 +1329,23 @@ if page_mode == "demo":
             st.error(f"Could not copy demo receptor: {exc}")
     receptor_path = demo_receptor_dst if demo_receptor_dst.exists() else receptor_info["path"]
 
-    ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.glob("*.pdbqt")) if DEMO_LIGAND_SOURCE_DIR.exists() else []
+    ligand_files = []
+    if DEMO_LIGAND_SOURCE_DIR.exists():
+        ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.glob("*.pdbqt"))
+        if not ligand_files:
+            ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.rglob("*.pdbqt"))
     ligand_labels = [p.name for p in ligand_files]
     if not ligand_labels:
-        st.error("No ligands found in the demo ligands folder. Add the sample PFAS ligands to run the demo.")
+        if DEMO_LIGAND_SOURCE_DIR.exists():
+            st.error(
+                "No ligands found in the demo ligands folder. Expected .pdbqt files under "
+                f"`{DEMO_LIGAND_SOURCE_DIR}`."
+            )
+        else:
+            st.error(
+                "Demo ligands folder not found. Ensure one of these folders is present: "
+                + ", ".join(str(p) for p in DEMO_LIGAND_DIR_CANDIDATES)
+            )
         ligand_paths = []
     else:
         st.markdown("**Select ligand(s)**")
