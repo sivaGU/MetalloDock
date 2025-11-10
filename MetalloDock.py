@@ -1775,362 +1775,93 @@ extra_params = (files_gui_dir / "AD4Zn.dat").resolve() if (files_gui_dir / "AD4Z
 
 # Test executables button
 st.subheader("Tools")
-test_btn = st.button("Test executables")
+run_btn = st.button("Run Docking", type="primary")
 
-# Test executables
-if test_btn:
-    if vina_exe and vina_exe.exists():
-        try:
-            p = subprocess.run([str(vina_exe), "--help"], capture_output=True, text=True, timeout=10)
-            st.success("Vina reachable.")
-            st.code(p.stdout[:800] or p.stderr[:800])
-        except Exception as e:
-            st.error(f"Vina failed: {e}")
-    else:
-        st.error(f"Vina not found in Files_for_GUI: {files_gui_dir / 'vina.exe'}")
+rows: List[dict] = []
+ad4_rows: List[dict] = []
 
-    for name, exe in [("AutoGrid4", autogrid_exe), ("Python", python_exe)]:
-        if exe and exe.exists():
-            st.info(f"{name} OK: {exe}")
-        else:
-            st.error(f"{name} not found in Files_for_GUI.")
-    for name, pth in [("zinc_pseudo.py", zinc_pseudo_py), ("AD4_parameters.dat", base_params), ("AD4Zn.dat (extra)", extra_params)]:
-        status = "OK" if (pth and pth.exists()) else "Missing"
-        loc = pth if pth else f"{files_gui_dir / name}"
-        st.write(f"{name}: {loc} {status}")
-
-if "build_maps_btn" not in locals():
-    build_maps_btn = False
-
-# ==============================
-# AD4 maps builder / updater (auto-detect all ligand types, force-include extras, patch missing)
-# ==============================
-
-if build_maps_btn:
-    # Pre-validation checks
-    st.info("Pre-validation checks...")
-    if backend != "AD4 (maps)":
-        st.error("Backend mismatch: switch to 'AD4 (maps)' to build maps.")
-        st.stop()
-    
-    # Check receptor file
-    if receptor_path is None or not receptor_path.exists():
-        st.error("Receptor file missing or invalid.")
-        st.error("Solution: Upload a valid PDBQT receptor file first.")
-        st.stop()
-    
-    # Check if receptor file is accessible
-    try:
-        with open(receptor_path, 'r') as f:
-            first_line = f.readline()
-        if not first_line.startswith(('ATOM', 'HETATM', 'REMARK')):
-            st.warning("Receptor file may not be in PDBQT format.")
-    except Exception as e:
-        st.error(f"Cannot read receptor file: {e}")
-        st.stop()
-    
-    maps_prefix = Path(maps_prefix_input).expanduser().resolve()
-    maps_dir = maps_prefix.parent
-    maps_dir.mkdir(parents=True, exist_ok=True)
-
-    if not (autogrid_exe and autogrid_exe.exists()):
-        st.error("AutoGrid4 executable path is missing.")
-    elif receptor_path is None or not receptor_path.exists():
-        st.error("Receptor is missing.")
-    elif not ligand_paths:
-        st.error("No ligands detected. Prepare or upload first.")
-    elif not (base_params and base_params.exists()):
-        st.error("AD4_parameters.dat is missing.")
-    else:
-        # 0) Build merged parameter file (optional extra params like AD4Zn.dat)
-        merged_params = maps_dir / "AD4_parameters_plus_ZnTZ.dat"
-        merge_parameter_files(base_params, extra_params, merged_params)
-        st.info(f"Using parameter file: {merged_params}")
-
-        # 1) Receptor with TZ (only if zinc_pseudo.py is provided)
-        rec_tz = maps_dir / (Path(receptor_path).stem + "_tz.pdbqt")
-        if zinc_pseudo_py and zinc_pseudo_py.exists() and python_exe and python_exe.exists():
-            with st.spinner("Adding tetrahedral Zn pseudoatom(s) (zinc_pseudo.py)..."):
-                try:
-                    zp = run_zinc_pseudo(python_exe, zinc_pseudo_py, receptor_path, rec_tz)
-                    if zp.returncode != 0 or not rec_tz.exists():
-                        st.error("zinc_pseudo.py failed.")
-                        st.error("Common causes:")
-                        st.error("1. Missing zinc_pseudo.py script")
-                        st.error("2. Python path incorrect")
-                        st.error("3. Receptor file path issues")
-                        st.error("4. Script permissions or dependencies")
-                        st.code("Error output:\n" + (zp.stdout or '') + "\n" + (zp.stderr or ''))
-                        st.info("Solution: run the Test executables button to verify all paths, then try again.")
-                        st.stop()
-                    st.success(f"Created {rec_tz.name}")
-                except FileNotFoundError as e:
-                    st.error(f"File not found: {e}")
-                    st.error("Solution: ensure the receptor file was uploaded correctly and try again.")
-                    st.stop()
-                except Exception as e:
-                    st.error(f"Unexpected error: {e}")
-                    st.error("Solution: check file permissions and try again.")
-                    st.stop()
-        else:
-            # assume receptor already contains TZ or no Zn needed
-            rec_tz = Path(receptor_path)
-            if not zinc_pseudo_py or not zinc_pseudo_py.exists():
-                st.warning("zinc_pseudo.py not found - using receptor as-is (may not have proper Zn pseudoatoms)")
-            elif not python_exe or not python_exe.exists():
-                st.warning("Python executable not found - using receptor as-is")
-            else:
-                st.info("Skipping zinc_pseudo.py; using receptor as-is.")
-
-        if normalize_OA:
-            normalize_receptor_oxygen_to_OA(rec_tz, rec_tz)
-
-        # 2) Detect receptor types and full ligand type union
-        rec_types_detected = read_types_from_pdbqt(rec_tz)
-        lig_types_detected = ligand_types_union(ligand_paths)
-
-        # force extra types if user requested
-        forced = [t.strip() for t in force_extra_types.replace(",", " ").split() if t.strip()]
-        lig_types_full = sorted(set(lig_types_detected).union(set(forced)))
-
-        st.info(f"Receptor types ({len(rec_types_detected)}): {' '.join(rec_types_detected)}")
-        st.info(f"Ligand types from all ligands ({len(lig_types_detected)}): {' '.join(sorted(lig_types_detected))}")
-        if forced:
-            st.warning(f"Force-including extra ligand types: {' '.join(forced)}")
-        st.info(f"Final ligand types for maps ({len(lig_types_full)}): {' '.join(lig_types_full)}")
-
-        spacing_val = float(spacing)
-        if spacing_val <= 0.0:
-            st.error("AD4 grid spacing must be greater than 0 Å. Update the Grid Box Settings before building maps.")
-            st.stop()
-
-        # 3) Build/patch GPF and run AutoGrid4
-        nx = max(10, int(round(float(size_x) / spacing_val)))
-        ny = max(10, int(round(float(size_y) / spacing_val)))
-        nz = max(10, int(round(float(size_z) / spacing_val)))
-        gpf_out = maps_prefix.with_suffix(".gpf")
-
-        write_simple_gpf(
-            gpf_path=gpf_out,
-            receptor_tz_filename=rec_tz.name if rec_tz.parent == maps_dir else rec_tz.name,
-            maps_prefix_basename=maps_prefix.name,
-            npts_xyz=(nx, ny, nz),
-            spacing=float(spacing),
-            center_xyz=(float(center_x), float(center_y), float(center_z)),
-            receptor_types=rec_types_detected,
-            ligand_types=lig_types_full,
-            parameter_file_rel=merged_params.name,
-        )
-
-        # ensure receptor & (one) ligand are in the folder for relative names
-        if rec_tz.parent != maps_dir:
-            shutil.copy2(rec_tz, maps_dir / rec_tz.name)
-        if ligand_paths:
-            ex_lig = ligand_paths[0]
-            if ex_lig.parent != maps_dir:
-                try: shutil.copy2(ex_lig, maps_dir / ex_lig.name)
-                except Exception: pass
-
-        with st.spinner("Running AutoGrid4 to generate/patch AD4 maps…"):
-            try:
-                ag = run_autogrid4(autogrid_exe, maps_dir, gpf_out)
-                if ag.returncode == 0:
-                    st.success(f"Maps are ready at: {maps_dir}")
-                    st.code((ag.stdout or ag.stderr)[:1200])
-                else:
-                    st.error("AutoGrid4 failed.")
-                    st.code((ag.stdout or '') + "\n" + (ag.stderr or ''))
-            except PermissionError as e:
-                st.error("Permission Error:")
-                st.code(str(e))
-                st.stop()
-            except FileNotFoundError as e:
-                st.error(f"File Not Found: {str(e)}")
-                st.warning(
-                    f"**Solution:**\n"
-                    f"- Ensure `Files_for_GUI/` contains the required executables.\n"
-                    f"- On Linux: use executables without `.exe` extension (e.g., `autogrid4` not `autogrid4.exe`).\n"
-                    f"- On Windows: use `.exe` files (e.g., `autogrid4.exe`)."
-                )
-                st.stop()
-            except Exception as e:
-                st.error(f"Unexpected Error: {str(e)}")
-                st.code(str(e))
-                st.stop()
-
-        # 4) Confirm maps present; call out any still-missing types
-        have = list_maps_present(maps_prefix)
-        missing_after = [t for t in lig_types_full if t not in have]
-        if missing_after:
-            st.error("Still missing maps for: " + ", ".join(missing_after))
-        else:
-            st.success("All requested ligand-type maps are present.")
-
-    if float(spacing) <= 0:
-        st.error("Grid spacing must be greater than zero before building AD4 maps.")
-        st.stop()
-
-# ==============================
-# Run docking
-# ==============================
-
-run_btn = st.button("Run Docking", type="primary", disabled=bool(st.session_state.docking_task))
-stop_btn = st.button("Stop Docking", disabled=st.session_state.docking_task is None)
-
-if stop_btn and st.session_state.docking_task:
-    st.session_state.stop_requested = True
-    st.session_state.docking_status_message = ("info", "Stop requested. Docking will halt after the current ligand.")
-    st.experimental_rerun()
-
-rows_for_display: Optional[List[dict]] = None
-ad4_rows_for_display: List[dict] = []
-backend_for_display: Optional[str] = None
-out_dir_for_display: Optional[Path] = None
-partial = False
-
-if run_btn and not st.session_state.docking_task:
+if run_btn:
     if not vina_exe.exists():
         st.error("Vina executable not found.")
-    elif receptor_path is None or not receptor_path.exists():
+        st.stop()
+    if receptor_path is None or not receptor_path.exists():
         st.error("Receptor file missing/invalid.")
-    elif not ligand_paths:
-        st.error("No ligand files found. Prepare or upload first.")
-    else:
-        cx, cy, cz = float(center_x), float(center_y), float(center_z)
-        job_backend = backend
-        maps_prefix_path = None
-        if job_backend == "AD4 (maps)":
-            maps_prefix_path = Path(maps_prefix_input).expanduser().resolve()
-            required_types = sorted(ligand_types_union(ligand_paths) or {"C", "F", "OA", "S", "NA"})
-            have = list_maps_present(maps_prefix_path)
-            base_req = [
-                maps_prefix_path.parent / f"{maps_prefix_path.name}.maps.fld",
-                maps_prefix_path.parent / f"{maps_prefix_path.name}.e.map",
-                maps_prefix_path.parent / f"{maps_prefix_path.name}.d.map",
-            ]
-            missing_files = [p for p in base_req if not p.exists()]
-            missing_types = [t for t in required_types if t not in have]
-            if missing_files or missing_types:
-                if missing_files:
-                    st.error("AD4 fld/e/d maps missing:\n" + "\n".join(str(p) for p in missing_files))
-                if missing_types:
-                    st.error("Affinity maps missing for types:\n" + ", ".join(missing_types))
-            else:
-                job = {
-                    "backend": job_backend,
-                    "ligands": [str(p) for p in ligand_paths],
-                    "index": 0,
-                    "rows": [],
-                    "ad4_rows": [],
-                    "vina_exe": str(vina_exe),
-                    "receptor_path": str(receptor_path),
-                    "center": (cx, cy, cz),
-                    "size": (float(size_x), float(size_y), float(size_z)),
-                    "autodetect": False,
-                    "maps_prefix": str(maps_prefix_path),
-                    "skip_exists": bool(skip_exists),
-                    "base_exhaustiveness": int(base_exhaustiveness),
-                    "base_num_modes": int(base_num_modes),
-                    "timeout_mode": "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout",
-                    "timeout_s": int(timeout_s),
-                    "max_retries": int(max_retries),
-                    "exhu_backoff": float(exhu_backoff),
-                    "modes_backoff": float(modes_backoff),
-                    "out_dir": str((work_dir / out_dir_name).resolve()),
-                }
-                st.session_state.docking_task = job
-                st.session_state.stop_requested = False
-                st.session_state.docking_results = None
-                st.session_state.docking_results_backend = None
-                st.session_state.docking_results_ad4 = []
-                st.session_state.docking_results_out_dir = None
-                st.session_state.docking_status_message = None
-                st.experimental_rerun()
-        else:
-            job = {
-                "backend": job_backend,
-                "ligands": [str(p) for p in ligand_paths],
-                "index": 0,
-                "rows": [],
-                "ad4_rows": [],
-                "vina_exe": str(vina_exe),
-                "receptor_path": str(receptor_path),
-                "center": (cx, cy, cz),
-                "size": (float(size_x), float(size_y), float(size_z)),
-                "autodetect": bool(autodetect),
-                "maps_prefix": None,
-                "skip_exists": bool(skip_exists),
-                "base_exhaustiveness": int(base_exhaustiveness),
-                "base_num_modes": int(base_num_modes),
-                "timeout_mode": "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout",
-                "timeout_s": int(timeout_s),
-                "max_retries": int(max_retries),
-                "exhu_backoff": float(exhu_backoff),
-                "modes_backoff": float(modes_backoff),
-                "out_dir": str((work_dir / out_dir_name).resolve()),
-            }
-            st.session_state.docking_task = job
-            st.session_state.stop_requested = False
-            st.session_state.docking_results = None
-            st.session_state.docking_results_backend = None
-            st.session_state.docking_results_ad4 = []
-            st.session_state.docking_results_out_dir = None
-            st.session_state.docking_status_message = None
-            st.experimental_rerun()
+        st.stop()
+    if not ligand_paths:
+        st.error("No ligand files found. Upload ligand PDBQT files first.")
+        st.stop()
 
-_process_docking_task()
+    cx, cy, cz = float(center_x), float(center_y), float(center_z)
+    if autodetect and backend == "Vina (box)":
+        auto_center = autodetect_metal_center(receptor_path)
+        if auto_center:
+            cx, cy, cz = auto_center
+            st.info(f"Auto-detected metal center: {cx:.3f}, {cy:.3f}, {cz:.3f}")
 
-task_state = st.session_state.get("docking_task")
-if task_state:
-    rows_for_display = task_state["rows"]
-    ad4_rows_for_display = task_state["ad4_rows"]
-    backend_for_display = task_state["backend"]
-    out_dir_for_display = Path(task_state["out_dir"])
-    partial = True
-elif st.session_state.docking_results is not None:
-    rows_for_display = st.session_state.docking_results
-    ad4_rows_for_display = st.session_state.docking_results_ad4 or []
-    backend_for_display = st.session_state.docking_results_backend
-    out_dir_val = st.session_state.docking_results_out_dir
-    out_dir_for_display = Path(out_dir_val) if out_dir_val else work_dir
-    partial = False
+    out_dir = (work_dir / out_dir_name).resolve()
 
-status_msg = st.session_state.docking_status_message
-if status_msg:
-    level, msg = status_msg
-    if level == "success":
-        st.success(msg)
-    elif level == "warning":
-        st.warning(msg)
-    else:
-        st.info(msg)
-    st.session_state.docking_status_message = None
+    maps_prefix = None
+    if backend == "AD4 (maps)":
+        maps_prefix = Path(maps_prefix_input).expanduser().resolve()
+        required_types = sorted(ligand_types_union(ligand_paths) or {"C", "F", "OA", "S", "NA"})
+        have = list_maps_present(maps_prefix)
+        base_req = [
+            maps_prefix.parent / f"{maps_prefix.name}.maps.fld",
+            maps_prefix.parent / f"{maps_prefix.name}.e.map",
+            maps_prefix.parent / f"{maps_prefix.name}.d.map",
+        ]
+        missing_files = [p for p in base_req if not p.exists()]
+        missing_types = [t for t in required_types if t not in have]
+        if missing_files or missing_types:
+            if missing_files:
+                st.error("AD4 fld/e/d maps missing:\n" + "\n".join(str(p) for p in missing_files))
+            if missing_types:
+                st.error("Affinity maps missing for types:\n" + ", ".join(missing_types))
+            st.stop()
 
-if rows_for_display is not None and backend_for_display:
-    _display_results_table(rows_for_display, backend_for_display, out_dir_for_display, ad4_rows_for_display, partial=partial)
-else:
-    st.info("Run docking to see results.")
+    tm_mode_key = "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout"
 
-def _display_results_table(rows: List[dict], backend: str, out_dir: Path, ad4_rows: List[dict], partial: bool = False) -> None:
-    if not rows:
-        if partial:
-            st.info("No ligands processed yet.")
-        return
+    prog = st.progress(0, text="Starting docking…")
+    console = st.empty()
 
-    if partial:
-        st.info(f"Processed {len(rows)} ligand(s) so far.")
+    def _cb(i, n, name, stat):
+        prog.progress(i / n, text=f"{i}/{n} {name} — {stat}")
+        console.write(f"{i}/{n}  {name}: {stat}")
 
+    with st.spinner("Running docking…"):
+        rows = run_vina_batch(
+            vina_exe=vina_exe,
+            receptor_file=receptor_path,
+            ligand_files=ligand_paths,
+            out_dir=out_dir,
+            center=(cx, cy, cz),
+            size=(float(size_x), float(size_y), float(size_z)),
+            scoring="ad4" if backend == "AD4 (maps)" else "vina",
+            base_exhaustiveness=int(base_exhaustiveness),
+            base_num_modes=int(base_num_modes),
+            timeout_mode=tm_mode_key,
+            timeout_s=int(timeout_s),
+            max_retries=int(max_retries),
+            exhu_backoff=float(exhu_backoff),
+            modes_backoff=float(modes_backoff),
+            progress_cb=_cb,
+            maps_prefix=maps_prefix,
+            skip_if_output_exists=bool(skip_exists),
+        )
+        if backend == "AD4 (maps)":
+            ad4_rows = rows
+
+if rows:
+    drop_cols = [c for c in rows[0].keys() if c.startswith("AD4_")]
     df = pd.DataFrame(rows)
-    drop_cols = [c for c in df.columns if c.startswith("AD4_")]
-    display_df = df[[c for c in df.columns if c not in drop_cols]]
-    st.dataframe(display_df, use_container_width=True)
+    st.success("Docking complete.")
+    st.dataframe(df[[c for c in df.columns if c not in drop_cols]], use_container_width=True)
 
     st.subheader("Result Files")
     for idx, row in enumerate(rows):
         ligand_name = row.get("Ligand", f"Ligand {idx+1}")
         out_path = row.get("Output_File")
         log_path = row.get("Log_File")
-
         if out_path and Path(out_path).exists():
             archive = io.BytesIO()
             with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -2147,31 +1878,20 @@ def _display_results_table(rows: List[dict], backend: str, out_dir: Path, ad4_ro
         else:
             st.caption(f"No PDBQT/log available for {ligand_name}")
 
-    if backend == "AD4 (maps)":
+    if backend == "AD4 (maps)" and ad4_rows:
         st.subheader("AD4 Summary")
         ad4_success = [r for r in ad4_rows if r.get("Status") == "Success"]
-        st.write(f"AD4 successes: {len(ad4_success)}/{len(ad4_rows) or len(rows)} ligands")
-        if ad4_success:
-            comp_df = pd.DataFrame(ad4_success)
-            display_cols = [
-                "Ligand",
-                "AD4_Affinity", "AD4_Intermolecular", "AD4_Internal", "AD4_Torsional",
-                "Binding_Affinity", "Num_Poses"
-            ]
-            available_cols = [c for c in display_cols if c in comp_df.columns]
-            if available_cols:
-                st.write("Energy Components:")
-                st.dataframe(comp_df[available_cols], use_container_width=True)
-            try:
-                ad4_affs = [float(r["AD4_Affinity"]) for r in ad4_success if r.get("AD4_Affinity") not in ("N/A", None, "")]
-                if ad4_affs:
-                    st.write(f"AD4 binding affinities: {min(ad4_affs):.2f} to {max(ad4_affs):.2f} kcal/mol")
-                interm = [float(r["AD4_Intermolecular"]) for r in ad4_success if r.get("AD4_Intermolecular") not in ("N/A", None, "")]
-                if interm:
-                    avg_inter = sum(interm) / len(interm)
-                    st.write(f"Average intermolecular energy: {avg_inter:.2f} kcal/mol")
-            except Exception:
-                pass
+        st.write(f"AD4 successes: {len(ad4_success)}/{len(ad4_rows)} ligands")
+        comp_df = pd.DataFrame(ad4_success)
+        display_cols = [
+            "Ligand",
+            "AD4_Affinity", "AD4_Intermolecular", "AD4_Internal", "AD4_Torsional",
+            "Binding_Affinity", "Num_Poses"
+        ]
+        available_cols = [c for c in display_cols if c in comp_df.columns]
+        if available_cols:
+            st.write("Energy Components:")
+            st.dataframe(comp_df[available_cols], use_container_width=True)
     else:
         st.subheader("Vina Summary")
         try:
@@ -2182,112 +1902,20 @@ def _display_results_table(rows: List[dict], backend: str, out_dir: Path, ad4_ro
         except Exception:
             pass
 
-        csv_bytes = _cached_file_bytes(results_to_csv_bytes(rows))
-        st.download_button(
-            "Download results CSV",
-            data=csv_bytes,
-            file_name="metallodock_results.csv",
-            mime="text/csv",
-        )
-        if out_dir.exists():
-            all_zip = _cached_file_bytes(zip_outputs(out_dir))
-            st.download_button(
-                "Download all output PDBQTs (ZIP)",
-                data=all_zip,
-                file_name=f"{out_dir.name}.zip",
-                mime="application/zip",
-            )
-
-
-def _process_docking_task() -> None:
-    task = st.session_state.get("docking_task")
-    if not task:
-        return
-
-    ligands = [Path(p) for p in task["ligands"]]
-    total = len(ligands)
-    idx = task["index"]
-    backend = task["backend"]
-
-    if total == 0:
-        st.info("No ligands to process.")
-        st.session_state["docking_results"] = []
-        st.session_state["docking_results_backend"] = backend
-        st.session_state["docking_results_ad4"] = []
-        st.session_state["docking_results_out_dir"] = task["out_dir"]
-        st.session_state["docking_task"] = None
-        return
-
-    if st.session_state.get("stop_requested"):
-        st.warning("Docking stopped by user.")
-        st.session_state["docking_results"] = task["rows"]
-        st.session_state["docking_results_backend"] = backend
-        st.session_state["docking_results_ad4"] = task["ad4_rows"]
-        st.session_state["docking_results_out_dir"] = task["out_dir"]
-        st.session_state["docking_status_message"] = ("warning", "Docking stopped. Results below include completed ligands.")
-        st.session_state["docking_task"] = None
-        st.session_state["stop_requested"] = False
-        return
-
-    if idx >= total:
-        st.session_state["docking_results"] = task["rows"]
-        st.session_state["docking_results_backend"] = backend
-        st.session_state["docking_results_ad4"] = task["ad4_rows"]
-        st.session_state["docking_results_out_dir"] = task["out_dir"]
-        st.session_state["docking_status_message"] = ("success", "Docking complete.")
-        st.session_state["docking_task"] = None
-        return
-
-    ligand_path = ligands[idx]
-    st.info(f"Docking ligand {idx + 1}/{total}: {ligand_path.name}")
-
-    receptor_path = Path(task["receptor_path"])
-    cx, cy, cz = task["center"]
-    if task.get("autodetect"):
-        auto_center = autodetect_metal_center(receptor_path)
-        if auto_center:
-            cx, cy, cz = auto_center
-            st.info(f"Auto-detected metal center: {cx:.3f}, {cy:.3f}, {cz:.3f}")
-
-    maps_prefix = Path(task["maps_prefix"]) if task.get("maps_prefix") else None
-    out_dir = Path(task["out_dir"])
-
-    rows = run_vina_batch(
-        vina_exe=Path(task["vina_exe"]),
-        receptor_file=receptor_path,
-        ligand_files=[ligand_path],
-        out_dir=out_dir,
-        center=(cx, cy, cz),
-        size=task["size"],
-        scoring="ad4" if backend == "AD4 (maps)" else "vina",
-        base_exhaustiveness=task["base_exhaustiveness"],
-        base_num_modes=task["base_num_modes"],
-        timeout_mode=task["timeout_mode"],
-        timeout_s=task["timeout_s"],
-        max_retries=task["max_retries"],
-        exhu_backoff=task["exhu_backoff"],
-        modes_backoff=task["modes_backoff"],
-        progress_cb=None,
-        maps_prefix=maps_prefix,
-        skip_if_output_exists=task["skip_exists"],
+    csv_bytes = _cached_file_bytes(results_to_csv_bytes(rows))
+    st.download_button(
+        "Download results CSV",
+        data=csv_bytes,
+        file_name="metallodock_results.csv",
+        mime="text/csv",
     )
-
-    if rows:
-        task["rows"].extend(rows)
-        if backend == "AD4 (maps)":
-            task["ad4_rows"].extend(rows)
-
-    task["index"] += 1
-    st.session_state["docking_task"] = task
-    st.session_state["docking_status_message"] = ("info", f"Processed {task['index']} of {total} ligand(s)…")
-
-    if task["index"] >= total:
-        st.session_state["docking_results"] = task["rows"]
-        st.session_state["docking_results_backend"] = backend
-        st.session_state["docking_results_ad4"] = task["ad4_rows"]
-        st.session_state["docking_results_out_dir"] = task["out_dir"]
-        st.session_state["docking_status_message"] = ("success", "Docking complete.")
-        st.session_state["docking_task"] = None
-        return
-
-    st.experimental_rerun()
+    if out_dir.exists():
+        all_zip = _cached_file_bytes(zip_outputs(out_dir))
+        st.download_button(
+            "Download all output PDBQTs (ZIP)",
+            data=all_zip,
+            file_name=f"{out_dir.name}.zip",
+            mime="application/zip",
+        )
+else:
+    st.info("Run docking to see results.")
