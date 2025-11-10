@@ -1,153 +1,125 @@
 # MetalloDock GUI
 
-A user-friendly Streamlit-based GUI for molecular docking of ligands to metalloprotein receptors using AutoDock Vina and AutoDock4 (AD4).
+MetalloDock is a Streamlit-based interface that wraps AutoDock Vina and AutoDock4 (AD4) so metalloprotein docking runs are easy to configure, execute, and review.
 
-Link: https://metallodock-niv29aly8pujiceythjnx7.streamlit.app/
+Hosted app: https://metallodock-niv29aly8pujiceythjnx7.streamlit.app/
 
-### Additional Option 1: Run Locally
+## Contents
+- [Quick Start (Cloud)](#quick-start-cloud)
+- [Run Locally](#run-locally)
+- [Requirements](#requirements)
+- [Project Structure](#project-structure)
+- [Key Features](#key-features)
+- [Documentation Overview](#documentation-overview)
+- [Demo Tab Assets](#demo-tab-assets)
+- [Tab-by-Tab Summary](#tab-by-tab-summary)
+- [Usage Workflow](#usage-workflow)
+- [Supported Formats](#supported-formats)
+- [Configuration Files](#configuration-files)
+- [Contact](#contact)
 
-1. **Clone this repository:**
+## Quick Start (Cloud)
+1. Open the hosted Streamlit app.
+2. Select the desired navigation tab (Demo, Standard AutoDock, or Metalloprotein Docking).
+3. Follow the on-screen prompts to upload receptors, ligands, and configure grid parameters.
+4. Use the *Documentation* tab for a detailed walkthrough of each step.
+
+## Run Locally
+1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd "MetalloDock GUI GitHub"
+   cd MetalloDock-main
    ```
-
-2. **Install Python dependencies:**
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
-
-3. **Launch the GUI:**
+3. **Launch the app**
    ```bash
    streamlit run MetalloDock.py
    ```
-   Or double-click `run_docking.bat` on Windows.
+   *Windows:* double-click `run_docking.bat` to launch Streamlit.
+4. Visit `http://localhost:8501` in your browser.
 
-4. **Open your browser:**
-   The GUI will automatically open at `http://localhost:8501`
+## Requirements
+- Python 3.7+ (tested with 3.8–3.11)
+- Streamlit, pandas (installed via `requirements.txt`)
+- Windows-ready executables in `Files_for_GUI/`:
+  - `vina.exe`
+  - `autogrid4.exe`
+  - `autodock4.exe`
 
-## 📋 Requirements
+*Linux/Mac:* compile or install equivalent binaries (without `.exe` extensions) and update paths in `MetalloDock.py` or drop them inside `Files_for_GUI/`.
 
-- **Python 3.7+** (tested with Python 3.8, 3.9, 3.10, 3.11)
-- **Streamlit** (installed via `requirements.txt`)
-- **Pandas** (installed via `requirements.txt`)
-- **Windows executables** (included in `Files_for_GUI/`):
-  - `vina.exe` - AutoDock Vina
-  - `autogrid4.exe` - AutoGrid4 for AD4 map generation
-  - `autodock4.exe` - AutoDock4 for docking
-
-## 📁 Project Structure
-
+## Project Structure
 ```
-MetalloDock GUI GitHub/
-├── MetalloDock.py          # Main GUI application
-├── Files_for_GUI/          # Executables and parameter files
-│   ├── vina.exe            # AutoDock Vina executable
-│   ├── autogrid4.exe       # AutoGrid4 executable
-│   ├── autodock4.exe       # AutoDock4 executable
-│   ├── zinc_pseudo.py      # Zinc pseudoatom script
-│   ├── AD4_parameters.dat  # AD4 base parameters
-│   ├── AD4Zn.dat           # Zinc-specific parameters
-│   └── Ligands/            # Sample ligand files (PDBQT format)
+MetalloDock-main/
+├── MetalloDock.py          # Main Streamlit application
+├── Files_for_GUI/          # Executables, parameters, sample ligands
+│   ├── vina.exe
+│   ├── autogrid4.exe
+│   ├── autodock4.exe
+│   ├── zinc_pseudo.py
+│   ├── AD4_parameters.dat
+│   ├── AD4Zn.dat
+│   └── Ligands/
+├── run_docking.bat         # Windows launcher
 ├── requirements.txt        # Python dependencies
-├── run_docking.bat         # Windows launcher script
-└── README.md               # This file
+└── README.md               # This document
 ```
 
-## 🎯 Features
+## Key Features
+- Unified Vina and AD4 workflows with zinc pseudoatom support
+- Automatic executable discovery and parameter setup
+- Grid box calculators, AD4 map generation, and progress tracking
+- Downloads for per-ligand PDBQT/logs, CSV summaries, and ZIP archives
+- Dedicated documentation tab mirroring the personalized vaccine pipeline
 
-- **Dual Docking Methods:**
-  - **AutoDock Vina**: Fast docking for initial screening
-  - **AutoDock4 (AD4)**: High-precision docking with zinc pseudoatom support for metalloproteins
+## Documentation Overview
+The in-app *Documentation* tab walks through the personalized cancer vaccine pipeline:
+1. Generating aggregated MHC files from Partek Flow CSV exports.
+2. Choosing vaccine design modules (Human Protein Atlas vs COSMIC-driven).
+3. Selecting MHC classes and optional epitope characteristics (aliphatic index, GRAVY, pI, half-life, instability, toxicity, IFN-γ release).
+4. Running VaxiJen manually to obtain antigenicity scores.
+5. Processing aggregated files, merging antigenicity, scoring, filtering, and computing population coverage.
 
-- **Automatic Setup:**
-  - Auto-detects executables from `Files_for_GUI/`
-  - Auto-detects parameter files
-  - Automatic receptor oxygen normalization (O→OA)
+## Demo Tab Assets
+The *Demo* tab is preconfigured for Carbonic Anhydrase I & II receptors. To use it:
+1. **Download the demo assets** from the `Carbonic Anhydrase Receptor Files` and `18 PFAS Ligands` folders in the repository.
+2. Place these folders alongside `MetalloDock.py` (locally) or upload their contents to the Streamlit Cloud workspace under the same folder names.
+3. In the app, choose either "Carbonic Anhydrase I" or "Carbonic Anhydrase II". Grid centers, sizes, spacing (0.375 Å), and docking parameters lock automatically.
+4. Upload one of the bundled receptors (PDBQT) and select ligands from the PFAS set before running AD4 map building or docking.
 
-- **User-Friendly Interface:**
-  - Drag-and-drop receptor upload
-  - Batch ligand processing
-  - Interactive grid box configuration
-  - Real-time progress tracking
-  - Results visualization and export
+Without these folders, the Demo tab cannot find receptors/ligands and will show missing-file warnings.
 
-- **Advanced Options:**
-  - Metal center auto-detection
-  - Custom grid box settings
-  - Configurable exhaustiveness and number of poses
-  - AD4 map generation and reuse
+## Tab-by-Tab Summary
+- **Home**: High-level overview and quick tips.
+- **Documentation**: Full step-by-step instructions (see above) covering CSV ingestion, module selection, epitope features, VaxiJen workflow, aggregated file processing, and population coverage.
+- **Demo**: AD4-only workflow with one-click presets for Carbonic Anhydrase I/II. Requires the demo receptor/ligand folders.
+- **Standard AutoDock**: Vina-focused workflow with user-defined grid boxes.
+- **Metalloprotein Docking**: AD4 workflow with full control over grid/map settings.
 
-## 🔧 Installation
+## Usage Workflow
+1. **Upload receptor** (PDBQT) via file uploader or path.
+2. **Prepare ligands** from a source folder or upload ready-made PDBQT files.
+3. **Configure grid box** manually or via preset (Demo) / autodetect (Vina).
+4. **Generate AD4 maps** when using the AD4 pipeline.
+5. **Run docking**; monitor progress through the status table.
+6. **Download results** (per-ligand logs/PDBQT, CSV summary, ZIP bundle).
 
-### Windows
+## Supported Formats
+- Receptors: PDBQT only
+- Ligands: PDBQT, PDB, MOL2, SDF (converted to PDBQT during preparation)
 
-1. **Install Python:**
-   - Download from [python.org](https://www.python.org/downloads/)
-   - Make sure to check "Add Python to PATH" during installation
+## Configuration Files
+Executables and parameters are auto-detected from `Files_for_GUI/`. Ensure permissions are set (`chmod +x` on Linux). Optional scripts:
+- `zinc_pseudo.py` for inserting tetrahedral Zn pseudoatoms
+- `AD4_parameters.dat` / `AD4Zn.dat` for AD4 scoring
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run the GUI:**
-   - Double-click `run_docking.bat`, or
-   - Run `streamlit run MetalloDock.py` in terminal
-
-### Linux/Mac
-
-**Note:** The included executables are Windows-only. For Linux/Mac, you'll need to:
-
-1. Install AutoDock Vina and AutoGrid4 from source or package managers
-2. Update the paths in `MetalloDock.py` or place executables in `Files_for_GUI/` with appropriate names (without `.exe`)
-
-## 📖 Usage
-
-1. **Upload Receptor:**
-   - Drag and drop a PDBQT receptor file, or
-   - Provide a local path to the receptor file
-
-2. **Prepare Ligands:**
-   - Click "Prepare Ligands" to select ligand files
-   - Supports multiple formats (will be converted to PDBQT)
-
-3. **Configure Grid Box:**
-   - Set center coordinates (X, Y, Z)
-   - Set box size (X, Y, Z)
-   - Or use "Auto-detect metal center" for automatic positioning
-
-4. **Select Docking Method:**
-   - **Vina**: Fast docking
-   - **AD4 Maps**: High-precision docking with pre-generated maps
-
-5. **Run Docking:**
-   - Click "Start Docking"
-   - Monitor progress in real-time
-   - View results when complete
-
-6. **Export Results:**
-   - Download individual PDBQT files
-   - Export CSV summary
-   - Download all results as ZIP
-
-## 🔬 Supported Formats
-
-- **Receptors:** PDBQT format (required)
-- **Ligands:** PDB, PDBQT, MOL2, SDF (will be converted to PDBQT)
-
-## ⚙️ Configuration
-
-All executables and parameter files are automatically detected from the `Files_for_GUI/` folder. No manual configuration needed!
-
-- Executables: `vina.exe`, `autogrid4.exe`, `autodock4.exe`
-- Parameters: `AD4_parameters.dat`, `AD4Zn.dat`
-- Scripts: `zinc_pseudo.py`
-
-## 📧 Contact
-
-For all questions and concerns contact Dr. Sivanesan Dakshanamurthy at sd233@georgetown.edu
+## Contact
+Questions, bug reports, or collaboration requests: **Dr. Sivanesan Dakshanamurthy** — sd233@georgetown.edu
 ---
+
 
 
 
