@@ -25,6 +25,12 @@ import pandas as pd
 import argparse
 import sys
 
+demo_assets_dir_global = REPO_ROOT / "MetalloDock Receptors and Ligands"
+DEMO_RECEPTOR_SOURCES = {
+    "Carbonic Anhydrase I (7Q0D)": demo_assets_dir_global / "Carbonic_Anhydrase_I.pdbqt",
+    "Carbonic Anhydrase II (2VVB)": demo_assets_dir_global / "Carbonic_Anhydrase_II.pdbqt",
+}
+DEMO_LIGAND_SOURCE_DIR = demo_assets_dir_global / "18 PFAS"
 
 def render_home_page():
     st.header("Welcome to MetalloDock")
@@ -1206,7 +1212,7 @@ nav_pages = [
     "Home",
     "Documentation",
     "MetalloDock Demo",
-    "Standard AutoDock Vina Docking",
+    "Standard AutoDock",
     "Metalloprotein Docking",
 ]
 
@@ -1237,7 +1243,7 @@ page_mode = "generic"
 
 if page == "MetalloDock Demo":
     page_mode = "demo"
-elif page == "Standard AutoDock Vina Docking":
+elif page == "Standard AutoDock":
     page_mode = "vina"
 elif page == "Metalloprotein Docking":
     page_mode = "ad4"
@@ -1257,17 +1263,15 @@ st.caption(f"Using working directory: `{work_dir}`")
 # Receptor and Ligand Setup
 if page_mode == "demo":
     st.subheader("Select Receptor & Ligands")
+    if not DEMO_RECEPTOR_SOURCES["Carbonic Anhydrase I (7Q0D)"].exists() or not DEMO_LIGAND_SOURCE_DIR.exists():
+        st.error("Demo assets folder missing. Ensure `MetalloDock Receptors and Ligands/` is included in the repo.")
     demo_receptors = {
-        "Carbonic Anhydrase I (7Q0D)": {
-            "path": CAI_RECEPTOR,
-            "center": (29.951, 0.420, -4.735),
-            "size": (16.0, 18.0, 16.0),
-        },
-        "Carbonic Anhydrase II (2VVB)": {
-            "path": CAII_RECEPTOR,
-            "center": (-6.421, 0.342, 17.256),
-            "size": (20.0, 20.0, 20.0),
-        },
+        name: {
+            "path": path,
+            "center": (29.951, 0.420, -4.735) if "I" in name else (-6.421, 0.342, 17.256),
+            "size": (16.0, 18.0, 16.0) if "I" in name else (20.0, 20.0, 20.0),
+        }
+        for name, path in DEMO_RECEPTOR_SOURCES.items()
     }
     receptor_choice = st.selectbox(
         "Select receptor",
@@ -1322,6 +1326,16 @@ if page_mode == "demo":
                 ligand_paths.append(dst)
         if not ligand_paths:
             st.warning("Select at least one ligand to enable docking.")
+        else:
+            missing = [p for p in ligand_paths if not p.exists()]
+            if missing:
+                for missing_path in missing:
+                    src = PFAS_LIGANDS_DIR / missing_path.name
+                    if src.exists():
+                        shutil.copy2(src, missing_path)
+                st.warning("One or more demo ligands were missing; they have been restored in the working directory.")
+        if not receptor_path.exists():
+            shutil.copy2(receptor_info["path"], receptor_path)
 else:
     st.subheader("Upload Receptor & Ligands")
     upload_col1, upload_col2 = st.columns(2)
