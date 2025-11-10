@@ -1279,12 +1279,20 @@ if page_mode == "demo":
     demo_assets_dir = work_dir / "MetalloDock_demo_assets"
     demo_assets_dir.mkdir(parents=True, exist_ok=True)
     demo_receptor_dst = demo_assets_dir / receptor_info["path"].name
+    ligand_files = sorted(PFAS_LIGANDS_DIR.glob("*.pdbqt"))
+    ligand_labels = [p.name for p in ligand_files]
+    if st.button("Prepare demo receptor & ligands", key="demo_prepare"):
+        shutil.copy2(receptor_info["path"], demo_receptor_dst)
+        ligand_target_dir = demo_assets_dir / "ligands"
+        ligand_target_dir.mkdir(parents=True, exist_ok=True)
+        for lf in ligand_files:
+            shutil.copy2(lf, ligand_target_dir / lf.name)
+        st.success(f"Copied {len(ligand_files)} ligands and receptor to {ligand_target_dir}")
+
     if not demo_receptor_dst.exists():
         shutil.copy2(receptor_info["path"], demo_receptor_dst)
     receptor_path = demo_receptor_dst
 
-    ligand_files = sorted(PFAS_LIGANDS_DIR.glob("*.pdbqt"))
-    ligand_labels = [p.name for p in ligand_files]
     if not ligand_labels:
         st.error("No ligands found in `MetalloDock Receptors and Ligands/18 PFAS`. Add the sample PFAS ligands to run the demo.")
         ligand_paths = []
@@ -1314,11 +1322,6 @@ if page_mode == "demo":
                 ligand_paths.append(dst)
         if not ligand_paths:
             st.warning("Select at least one ligand to enable docking.")
-
-    prep_btn = False
-    lig_mode = "demo"
-    ligand_uploads = []
-    lig_src = None
 else:
     st.subheader("Upload Receptor & Ligands")
     upload_col1, upload_col2 = st.columns(2)
@@ -1344,6 +1347,39 @@ else:
 
     demo_selected_receptor = None
     ligand_paths: List[Path] = []
+
+# ---------------------------------------------
+existing_ligand_paths = locals().get("ligand_paths", [])
+ligand_paths = existing_ligand_paths
+prepared_root = work_dir
+
+if page_mode != "demo":
+    if prep_btn:
+        try:
+            prepared = prepare_ligands_from_folder(Path(lig_src).expanduser().resolve(), prepared_root)
+            st.success(f"Prepared {len(prepared)} ligands → {prepared[0].parent}")
+        except Exception as e:
+            st.error(str(e))
+
+    if lig_mode == "Upload now" and ligand_uploads:
+        lig_dir = work_dir / "ligands_uploaded"
+        lig_dir.mkdir(parents=True, exist_ok=True)
+        ligand_paths = []
+        for up in ligand_uploads:
+            ligand_paths.append(_save_uploaded_file(up, lig_dir))
+    else:
+        default_prepared_dir = prepared_root / "prepared_ligands" / "ligands_no_hydrogens"
+        ligand_paths = sorted(default_prepared_dir.glob("*.pdbqt"))
+
+existing_receptor_path = locals().get("receptor_path", None)
+if page_mode != "demo":
+    receptor_path = None
+    if receptor_input_mode == "Upload file" and receptor_uploaded is not None:
+        receptor_path = _save_uploaded_file(receptor_uploaded, work_dir / "receptor")
+    elif receptor_input_mode == "Local path" and receptor_local_path:
+        receptor_path = Path(receptor_local_path).expanduser().resolve()
+else:
+    receptor_path = existing_receptor_path
 
 if page_mode == "demo":
     allowed_backends = ["Vina (box)", "AD4 (maps)"]
@@ -1616,6 +1652,7 @@ if page_mode != "demo":
     if lig_mode == "Upload now" and ligand_uploads:
         lig_dir = work_dir / "ligands_uploaded"
         lig_dir.mkdir(parents=True, exist_ok=True)
+        ligand_paths = []
         for up in ligand_uploads:
             ligand_paths.append(_save_uploaded_file(up, lig_dir))
     else:
