@@ -1790,19 +1790,94 @@ if build_maps_btn:
                 force_types = {tok.strip().upper() for tok in force_extra_types.split(",") if tok.strip()}
 
             with st.spinner("Building AutoGrid4 maps…"):
-                map_details = build_ad4_maps(
-                    receptor=receptor_path,
-                    ligands=ligand_paths,
-                    center=(float(center_x), float(center_y), float(center_z)),
-                    size=(float(size_x), float(size_y), float(size_z)),
-                    spacing=float(spacing),
-                    maps_prefix=maps_prefix_path,
-                    autogrid_exe=autogrid_exe,
-                    base_params=base_params,
-                    extra_params=extra_params,
-                    normalize_oxygen=normalize_OA,
-                    force_types=force_types,
+                if receptor_path is None or not receptor_path.exists():
+                    raise FileNotFoundError("Upload a receptor PDBQT before building maps.")
+                if autogrid_exe is None or not autogrid_exe.exists():
+                    raise FileNotFoundError("AutoGrid4 executable not found. Set it in the Executables section before building maps.")
+                if base_params is None or not base_params.exists():
+                    raise FileNotFoundError("AD4_parameters.dat is missing. Configure it in the Executables section before building maps.")
+
+                spacing_val = float(spacing)
+                if spacing_val <= 0.0:
+                    raise ValueError("AD4 grid spacing must be greater than 0.0 Å before building maps.")
+                size_vals = (float(size_x), float(size_y), float(size_z))
+                if any(val <= 0.0 for val in size_vals):
+                    raise ValueError("Grid box dimensions must all be greater than 0.0 Å before building maps.")
+
+                maps_prefix_clean = maps_prefix_path.with_suffix("") if maps_prefix_path.suffix else maps_prefix_path
+                maps_dir = maps_prefix_clean.parent
+                maps_dir.mkdir(parents=True, exist_ok=True)
+
+                merged_params = maps_dir / "AD4_parameters_plus_ZnTZ.dat"
+                merge_parameter_files(base_params, extra_params, merged_params)
+
+                receptor_copy = maps_dir / receptor_path.name
+                shutil.copy2(receptor_path, receptor_copy)
+                if normalize_OA:
+                    try:
+                        normalize_receptor_oxygen_to_OA(receptor_copy, receptor_copy)
+                    except Exception:
+                        pass
+
+                invalid_types = {"K", "NA", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}
+                rec_filtered = maps_dir / f"{receptor_copy.stem}_filtered.pdbqt"
+                try:
+                    with open(receptor_copy, "r", errors="ignore") as fin, open(rec_filtered, "w", encoding="utf-8") as fout:
+                        for line in fin:
+                            if line.startswith(("ATOM", "HETATM")):
+                                toks = line.split()
+                                if toks and toks[-1] in invalid_types:
+                                    continue
+                            fout.write(line)
+                    if rec_filtered.stat().st_size == 0:
+                        rec_filtered.unlink(missing_ok=True)
+                        rec_filtered = receptor_copy
+                except Exception:
+                    rec_filtered = receptor_copy
+                rec_tz = rec_filtered
+
+                rec_types = [t for t in read_types_from_pdbqt(rec_tz) if t not in invalid_types]
+                if not rec_types:
+                    rec_types = [t for t in read_types_from_pdbqt(receptor_copy) if t not in invalid_types]
+                if not rec_types:
+                    raise ValueError("No valid receptor atom types detected after filtering. Check the receptor PDBQT file.")
+
+                ligand_types = ligand_types_union(ligand_paths) if ligand_paths else set()
+                if force_types:
+                    ligand_types.update(force_types)
+                ligand_types = {t.strip().upper() for t in ligand_types if t}
+                if not ligand_types:
+                    ligand_types = {"C", "F", "O", "OA", "S", "NA"}
+                ligand_types_sorted = sorted(ligand_types)
+
+                npts = tuple(max(10, int(round(dim / spacing_val))) for dim in size_vals)
+                gpf_out = maps_prefix_clean.with_suffix(".gpf")
+                write_simple_gpf(
+                    gpf_path=gpf_out,
+                    receptor_tz_filename=rec_tz.name,
+                    maps_prefix_basename=maps_prefix_clean.name,
+                    npts_xyz=npts,
+                    spacing=spacing_val,
+                    center_xyz=(float(center_x), float(center_y), float(center_z)),
+                    receptor_types=rec_types,
+                    ligand_types=ligand_types_sorted,
+                    parameter_file_rel=merged_params.name,
                 )
+
+                proc = run_autogrid4(autogrid_exe, maps_dir, gpf_out)
+                if proc.returncode != 0:
+                    raise RuntimeError("AutoGrid4 failed while building maps.")
+
+                map_details = {
+                    "returncode": proc.returncode,
+                    "stdout": proc.stdout or "",
+                    "stderr": proc.stderr or "",
+                    "maps_dir": maps_dir,
+                    "maps_prefix": maps_prefix_clean,
+                    "gpf": gpf_out,
+                    "atom_types": ligand_types_sorted,
+                    "map_files": sorted(str(p) for p in maps_dir.glob(f"{maps_prefix_clean.name}.*.map")),
+                }
 
             atom_types = ", ".join(map_details.get("atom_types", [])) or "(none)"
             st.success(
@@ -1997,3 +2072,115 @@ def list_maps_present(maps_prefix: Path) -> Set[str]:
         if t:
             present.add(t)
     return present
+
+FORCE_DEFAULT_TYPES = {"C", "F", "O", "OA", "S", "NA"}
+
+
+def build_ad4_maps(
+    receptor: Path,
+    ligands: List[Path],
+    center: Tuple[float, float, float],
+    size: Tuple[float, float, float],
+    spacing: float,
+    maps_prefix: Path,
+    autogrid_exe: Path,
+    base_params: Optional[Path],
+    extra_params: Optional[Path],
+    normalize_oxygen: bool = True,
+    force_types: Optional[Set[str]] = None,
+) -> dict:
+    if receptor is None or not receptor.exists():
+        raise FileNotFoundError("Upload a receptor PDBQT before building maps.")
+    if autogrid_exe is None or not autogrid_exe.exists():
+        raise FileNotFoundError("AutoGrid4 executable not found. Set it in the Executables section before building maps.")
+    if base_params is None or not base_params.exists():
+        raise FileNotFoundError("AD4_parameters.dat is missing. Configure it in the Executables section before building maps.")
+
+    spacing_val = float(spacing)
+    if spacing_val <= 0.0:
+        raise ValueError("AD4 grid spacing must be greater than 0.0 Å before building maps.")
+    size_vals = tuple(float(v) for v in size)
+    if any(val <= 0.0 for val in size_vals):
+        raise ValueError("Grid box dimensions must all be greater than 0.0 Å before building maps.")
+
+    prefix_clean = maps_prefix.with_suffix("") if maps_prefix.suffix else maps_prefix
+    maps_dir = prefix_clean.parent
+    maps_dir.mkdir(parents=True, exist_ok=True)
+
+    merged_params = maps_dir / "AD4_parameters_plus_ZnTZ.dat"
+    merge_parameter_files(base_params, extra_params, merged_params)
+
+    receptor_copy = maps_dir / receptor.name
+    shutil.copy2(receptor, receptor_copy)
+    if normalize_oxygen:
+        try:
+            normalize_receptor_oxygen_to_OA(receptor_copy, receptor_copy)
+        except Exception:
+            pass
+
+    invalid_types = {"K", "Na", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}
+    rec_filtered = maps_dir / (receptor_copy.stem + "_filtered.pdbqt")
+    try:
+        with open(receptor_copy, "r", errors="ignore") as fin, open(rec_filtered, "w", encoding="utf-8") as fout:
+            for line in fin:
+                if line.startswith(("ATOM", "HETATM")):
+                    toks = line.split()
+                    if toks and toks[-1] in invalid_types:
+                        continue
+                fout.write(line)
+        if rec_filtered.stat().st_size == 0:
+            rec_filtered.unlink(missing_ok=True)
+            rec_filtered = receptor_copy
+    except Exception:
+        rec_filtered = receptor_copy
+    rec_tz = rec_filtered
+
+    rec_types = [t for t in read_types_from_pdbqt(rec_tz) if t not in invalid_types]
+    if not rec_types:
+        rec_types = [t for t in read_types_from_pdbqt(receptor_copy) if t not in invalid_types]
+    if not rec_types:
+        raise ValueError("No valid receptor atom types detected after filtering. Check the receptor PDBQT file.")
+
+    ligand_types = ligand_types_union(ligands) if ligands else set()
+    if force_types:
+        ligand_types.update(force_types)
+    ligand_types = {t.strip().upper() for t in ligand_types if t}
+    if not ligand_types:
+        ligand_types = set(FORCE_DEFAULT_TYPES)
+    if not ligand_types:
+        raise ValueError("Unable to detect ligand atom types. Upload ligands or list atom types in the force-include box.")
+    ligand_types_sorted = sorted(ligand_types)
+
+    npts = tuple(max(10, int(round(dim / spacing_val))) for dim in size_vals)
+    gpf_out = prefix_clean.with_suffix(".gpf")
+    write_simple_gpf(
+        gpf_path=gpf_out,
+        receptor_tz_filename=rec_tz.name,
+        maps_prefix_basename=prefix_clean.name,
+        npts_xyz=npts,
+        spacing=spacing_val,
+        center_xyz=tuple(float(v) for v in center),
+        receptor_types=rec_types,
+        ligand_types=ligand_types_sorted,
+        parameter_file_rel=merged_params.name,
+    )
+
+    proc = run_autogrid4(autogrid_exe, maps_dir, gpf_out)
+    if proc.returncode != 0:
+        raise RuntimeError("AutoGrid4 failed while building maps.")
+
+    return {
+        "returncode": proc.returncode,
+        "stdout": proc.stdout or "",
+        "stderr": proc.stderr or "",
+        "maps_dir": maps_dir,
+        "maps_prefix": prefix_clean,
+        "gpf": gpf_out,
+        "atom_types": ligand_types_sorted,
+        "map_files": sorted(str(p) for p in maps_dir.glob(f"{prefix_clean.name}.*.map")),
+    }
+
+
+def build_ad4_maps_for_selection(*args, **kwargs):
+    """Backward-compatible wrapper for legacy code paths."""
+    return build_ad4_maps(*args, **kwargs)
